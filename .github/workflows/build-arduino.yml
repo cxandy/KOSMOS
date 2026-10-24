@@ -1,0 +1,39 @@
+name: Build
+
+# Verify the KOSMOS-AcidDrip firmware compiles on every push/PR that touches
+# it, and on demand. Uses arduino-cli + the Earle Philhower RP2040 core,
+# matching the FQBN documented in KOSMOS-AcidDrip/README.md.
+
+on:
+  push:
+    paths:
+      - 'KOSMOS-AcidDrip/**'
+      - '.github/workflows/build-arduino.yml'
+  pull_request:
+    paths:
+      - 'KOSMOS-AcidDrip/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          # Adafruit TinyUSB is included by <Adafruit_TinyUSB.h>.
+          # PWMAudio is provided by the RP2040 core itself.
+          libraries: |
+            Adafruit TinyUSB
+          cores: |
+            rp2040:rp2040
+
+      - name: Compile KOSMOS-AcidDrip
+        # Board = Raspberry Pi Pico, USB stack = TinyUSB, 150 MHz (see README).
+        run: |
+          arduino-cli compile \
+            --fqbn rp2040:rp2040:rpipico:usbstack=tinyusb,freq=150 \
+            -e KOSMOS-AcidDrip
