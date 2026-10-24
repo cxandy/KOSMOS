@@ -914,7 +914,7 @@ void lcdInit() {
   // code writes CASET 0..239 / PASET 40..279, so CASET is the 240 px axis and
   // PASET the 320 px one. A single window of 240 x 320 therefore covers
   // every cell of the RAM. Clearing with the opposite order (CASET 0..319)
-//  would point the column counter past the end of the RAM.
+  // would point the column counter past the end of the RAM.
   lcdClearWindow(LCD_PANEL_H, LCD_PANEL_W);
 }
 
@@ -965,14 +965,6 @@ void lcdFillRam(uint16_t ramX0, uint16_t ramY0, uint16_t ramX1, uint16_t ramY1, 
     LCD_SPI.transfer(color & 0xFF);
   }
   digitalWrite(LCD_CS, HIGH);
-}
-
-// Repaint the two 40 px margins with black. They are the only pixels the UI
-// never redraws, so a stray speckle there would stay on screen for as long
-// as the synth is powered. Painting black over black does not flicker.
-void lcdRepaintMargins() {
-  lcdFillRam(0, 0, LCD_PANEL_H - 1, LCD_Y_OFFSET - 1, COLOR_BLACK);
-  lcdFillRam(0, LCD_Y_OFFSET + 240, LCD_PANEL_H - 1, LCD_PANEL_W - 1, COLOR_BLACK);
 }
 
 // ==== 描画ユーティリティ ====
@@ -2265,12 +2257,22 @@ void loop() {
     uint32_t now = millis();
 
     // The black margins are the only pixels the UI never redraws, so a stray
-    // speckle there would stay on screen for good. Repaint them every
-    // couple of seconds - black over black, so it does not flicker.
+    // speckle there would stay on screen for good. Repaint them in 10 row
+    // slices, one slice every 200 ms: the whole margin is refreshed about
+    // every 1.6 s and no single block holds up the synth for more than
+    // ~3 ms, which keeps the MIDI timing clean.
     static unsigned long lastMarginPaint = 0;
-    if (now - lastMarginPaint >= 2000) {
+    static uint8_t marginStrip = 0;
+    static uint8_t marginSlice = 0;
+    if (now - lastMarginPaint >= 200) {
       lastMarginPaint = now;
-      lcdRepaintMargins();
+      uint16_t base = (marginStrip == 0) ? 0 : (LCD_Y_OFFSET + 240);
+      uint16_t sliceY0 = (uint16_t)(base + marginSlice * 10);
+      lcdFillRam(0, sliceY0, LCD_PANEL_H - 1, (uint16_t)(sliceY0 + 9), COLOR_BLACK);
+      if (++marginSlice >= 4) {
+        marginSlice = 0;
+        marginStrip ^= 1;
+      }
     }
 
     if (interval < 10) interval = 10;

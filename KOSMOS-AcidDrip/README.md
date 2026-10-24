@@ -163,9 +163,11 @@ things guard against that:
   that is actually cleared is not the one that was asked for;
 * the panel is cleared a second time after the splash screen, when the USB
   MIDI stack has settled and the boot time interrupt storm is over;
-* both margins are repainted black every 2 s. Painting black over black does
-  not flicker, and it wipes out any speckle a single flipped SPI bit would
-  otherwise leave behind.
+* both margins are repainted black in 10 row slices, one slice every 200 ms.
+  Painting black over black does not flicker, and it wipes out any speckle a
+  single flipped SPI bit would otherwise leave behind. The slices keep the
+  panel clean without blocking the synth for more than ~3 ms at a time, which
+  would otherwise show up as MIDI timing jitter.
 
 For the same reason the LCD SPI clock is 12 MHz instead of the 24 MHz maximum:
 the Acid Drip V2 panel hangs off long jumper wires, and a flipped bit in a
