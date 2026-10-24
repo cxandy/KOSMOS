@@ -840,6 +840,10 @@ void lcdData(uint8_t dat) {
 }
 
 // ==== LCD 初期化（ILI9341 / Acid Drip V2） ====
+// Clear a cols x rows rectangle with black. The window is set on the column
+// (0x2A) and row (0x2B) address counters, in that order.
+void lcdClearWindow(uint16_t cols, uint16_t rows);
+
 void lcdInit() {
   pinMode(LCD_CS, OUTPUT);
   pinMode(LCD_DC, OUTPUT);
@@ -897,15 +901,30 @@ void lcdInit() {
   lcdCmd(0x29); delay(20);               // display on
 
   // Clear the whole panel; the UI only paints the centred 240x240 area, so
-  // the margins would otherwise stay uninitialised.
+  // the margins would otherwise keep whatever was in RAM at power-up.
+  //
+  // The address axes are transposed relative to the logical axes the drawing
+  // code uses (the drawing code writes CASET 0..239 / PASET 40..279), and
+  // which address counter is the long one depends on the panel's own
+  // ordering. Clearing with one order only leaves the far end of the other
+  // counter untouched - the row counter wraps at its window end - and the
+  // power-up contents of those cells show up as speckles in the margin.
+  // Clearing both orders zeroes the whole address space either way.
+  lcdClearWindow(LCD_PANEL_W, LCD_PANEL_H);
+  lcdClearWindow(LCD_PANEL_H, LCD_PANEL_W);
+}
+
+// Clear a cols x rows rectangle with black. The window is set on the column
+// (0x2A) and row (0x2B) address counters, in that order.
+void lcdClearWindow(uint16_t cols, uint16_t rows) {
   lcdCmd(0x2A);
-  lcdData((LCD_PANEL_W - 1) >> 8); lcdData((LCD_PANEL_W - 1) & 0xFF);
+  lcdData((cols - 1) >> 8); lcdData((cols - 1) & 0xFF);
   lcdCmd(0x2B);
-  lcdData((LCD_PANEL_H - 1) >> 8); lcdData((LCD_PANEL_H - 1) & 0xFF);
+  lcdData((rows - 1) >> 8); lcdData((rows - 1) & 0xFF);
   lcdCmd(0x2C);
   digitalWrite(LCD_DC, HIGH);
   digitalWrite(LCD_CS, LOW);
-  for (uint32_t i = 0; i < (uint32_t)LCD_PANEL_W * LCD_PANEL_H; i++) {
+  for (uint32_t i = 0; i < (uint32_t)cols * rows; i++) {
     LCD_SPI.transfer(0x00);
     LCD_SPI.transfer(0x00);
   }

@@ -142,6 +142,12 @@ Getting either half wrong is visible immediately:
   and reads as "not centred";
 * no rotation at all → the picture comes out sideways.
 
+The panel is also cleared twice at boot, once with each axis order
+(`lcdClearWindow(320, 240)` and `lcdClearWindow(240, 320)`). A single clear
+leaves the far end of one address counter untouched - it wraps at its window
+end - and the power-up contents of those cells show up as speckles in the
+margin next to the UI.
+
 The original Acid Drip firmware draws the full 320x240 panel in one go, so it
 never needs either of these; this port has to place a smaller square inside
 that space.
