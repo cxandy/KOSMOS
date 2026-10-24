@@ -142,15 +142,34 @@ Getting either half wrong is visible immediately:
   and reads as "not centred";
 * no rotation at all → the picture comes out sideways.
 
-The panel is also cleared twice at boot, once with each axis order
-(`lcdClearWindow(320, 240)` and `lcdClearWindow(240, 320)`). A single clear
-leaves the far end of one address counter untouched - it wraps at its window
-end - and the power-up contents of those cells show up as speckles in the
-margin next to the UI.
-
 The original Acid Drip firmware draws the full 320x240 panel in one go, so it
 never needs either of these; this port has to place a smaller square inside
 that space.
+
+### Keeping the black margins clean
+
+The two 40 px margins are the only pixels the UI never redraws — the 240x240
+area is repainted continuously, the margins are not. Anything that is not
+written correctly at boot therefore stays on screen for as long as the synth
+is powered, which is exactly how the speckles in the margin appeared. Four
+things guard against that:
+
+* the boot clear uses the panel's real axis order, CASET 0..239 / PASET
+  0..319, which covers every cell of the RAM in one window (clearing with the
+  opposite order points the column counter past the end of the RAM);
+* both address commands get **four** parameter bytes — start high/low and end
+  high/low. Sending only the end address leaves the parameter fetch half
+  finished: the following bytes are swallowed as parameters, and the window
+  that is actually cleared is not the one that was asked for;
+* the panel is cleared a second time after the splash screen, when the USB
+  MIDI stack has settled and the boot time interrupt storm is over;
+* both margins are repainted black every 2 s. Painting black over black does
+  not flicker, and it wipes out any speckle a single flipped SPI bit would
+  otherwise leave behind.
+
+For the same reason the LCD SPI clock is 12 MHz instead of the 24 MHz maximum:
+the Acid Drip V2 panel hangs off long jumper wires, and a flipped bit in a
+one-shot write is permanent.
 
 ---
 
@@ -175,9 +194,11 @@ the display's SPI pins. `readJoystick()` is a no-op.
 ## Differences from upstream KOSMOS v1.3.4
 
 * PWM mono audio on GP15 instead of I2S on GP26/27/28.
-* ILI9341 init using landscape MADCTL `0x20` (RGB), full 320x240 clearing, and a
+* ILI9341 init using landscape MADCTL `0x20` (RGB), a full 320x240 clear in the
+  panel's real axis order with four parameter bytes per address command, a
   90° clockwise rotation of the 240x240 UI plus a 40 px margin on the axis that
-  ends up horizontal, instead of the ST7789 240x240 display.
+  ends up horizontal, a 12 MHz SPI clock and a periodic repaint of the black
+  margins, instead of the ST7789 240x240 display.
 * A button moved from GP15 to GP16 (GP15 is audio on Acid Drip).
 * Joystick disabled; GP22 no longer used as DAC mute.
 * Splash delay reduced from 10 s to 1.5 s.

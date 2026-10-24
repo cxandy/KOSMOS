@@ -210,6 +210,12 @@ Adafruit_USBD_MIDI usb_midi;
 #define LCD_X_OFFSET 0    // RAM X -> 240 px tall axis, the UI fills it
 #define LCD_Y_OFFSET 40   // RAM Y -> 320 px wide axis, (320 - 240) / 2
 
+// LCD SPI clock. 24 MHz is the RP2040 maximum, but the Acid Drip V2 panel
+// hangs off long jumper wires and the black margins are written only once
+// (the UI area is redrawn every frame, the margins are not), so a single
+// flipped bit would stay on screen for good. 12 MHz is the safe choice.
+#define LCD_SPI_HZ 12000000
+
 // ---- A/B/X/Y (Acid Drip pads 4/5/6/8) ----
 #define KEY_A_PIN    16
 #define KEY_B_PIN    17
@@ -840,8 +846,7 @@ void lcdData(uint8_t dat) {
 }
 
 // ==== LCD 初期化（ILI9341 / Acid Drip V2） ====
-// Clear a cols x rows rectangle with black. The window is set on the column
-// (0x2A) and row (0x2B) address counters, in that order.
+// Clear a cols x rows rectangle of the panel RAM with black.
 void lcdClearWindow(uint16_t cols, uint16_t rows);
 
 void lcdInit() {
@@ -854,7 +859,7 @@ void lcdInit() {
   LCD_SPI.setSCK(LCD_SCK);
   LCD_SPI.setTX(LCD_MOSI);
   LCD_SPI.begin();
-  LCD_SPI.beginTransaction(SPISettings(24000000, MSBFIRST, SPI_MODE0));
+  LCD_SPI.beginTransaction(SPISettings(LCD_SPI_HZ, MSBFIRST, SPI_MODE0));
 
   // ハードウェアリセット
   digitalWrite(LCD_RST, LOW); delay(10);
@@ -901,26 +906,33 @@ void lcdInit() {
   lcdCmd(0x29); delay(20);               // display on
 
   // Clear the whole panel; the UI only paints the centred 240x240 area, so
-  // the margins would otherwise keep whatever was in RAM at power-up.
+  // the two 40 px margins would otherwise keep whatever was in the panel's
+  // RAM at power-up. That stale content is what showed up as speckles in the
+  // margin.
   //
-  // The address axes are transposed relative to the logical axes the drawing
-  // code uses (the drawing code writes CASET 0..239 / PASET 40..279), and
-  // which address counter is the long one depends on the panel's own
-  // ordering. Clearing with one order only leaves the far end of the other
-  // counter untouched - the row counter wraps at its window end - and the
-  // power-up contents of those cells show up as speckles in the margin.
-  // Clearing both orders zeroes the whole address space either way.
-  lcdClearWindow(LCD_PANEL_W, LCD_PANEL_H);
+  // The panel RAM is 240 (column address) x 320 (row address): the drawing
+  // code writes CASET 0..239 / PASET 40..279, so CASET is the 240 px axis and
+  // PASET the 320 px one. A single window of 240 x 320 therefore covers
+  // every cell of the RAM. Clearing with the opposite order (CASET 0..319)
+//  would point the column counter past the end of the RAM.
   lcdClearWindow(LCD_PANEL_H, LCD_PANEL_W);
 }
 
-// Clear a cols x rows rectangle with black. The window is set on the column
-// (0x2A) and row (0x2B) address counters, in that order.
+// Clear a cols x rows rectangle of the panel RAM with black. The window is
+// set on the column (0x2A) and row (0x2B) address counters, in that order.
+// Both commands take four parameter bytes (start high/low, end high/low):
+// sending only the end address leaves the parameter fetch half finished, the
+// following bytes are then swallowed as parameters and the window that is
+// actually cleared is not the one that was asked for.
 void lcdClearWindow(uint16_t cols, uint16_t rows) {
   lcdCmd(0x2A);
+  lcdData(0x00); lcdData(0x00);
   lcdData((cols - 1) >> 8); lcdData((cols - 1) & 0xFF);
+
   lcdCmd(0x2B);
+  lcdData(0x00); lcdData(0x00);
   lcdData((rows - 1) >> 8); lcdData((rows - 1) & 0xFF);
+
   lcdCmd(0x2C);
   digitalWrite(LCD_DC, HIGH);
   digitalWrite(LCD_CS, LOW);
@@ -929,6 +941,38 @@ void lcdClearWindow(uint16_t cols, uint16_t rows) {
     LCD_SPI.transfer(0x00);
   }
   digitalWrite(LCD_CS, HIGH);
+}
+
+// Fill a rectangle of the panel RAM with one colour. RAM X is the column
+// address (0..239), RAM Y is the row address (0..319). This deliberately
+// bypasses the logical coordinate system: the black margins live outside
+// the 240x240 UI area, so they have to be addressed in panel space.
+void lcdFillRam(uint16_t ramX0, uint16_t ramY0, uint16_t ramX1, uint16_t ramY1, uint16_t color) {
+  lcdCmd(0x2A);
+  lcdData(ramX0 >> 8); lcdData(ramX0 & 0xFF);
+  lcdData(ramX1 >> 8); lcdData(ramX1 & 0xFF);
+
+  lcdCmd(0x2B);
+  lcdData(ramY0 >> 8); lcdData(ramY0 & 0xFF);
+  lcdData(ramY1 >> 8); lcdData(ramY1 & 0xFF);
+
+  lcdCmd(0x2C);
+  digitalWrite(LCD_DC, HIGH);
+  digitalWrite(LCD_CS, LOW);
+  uint32_t count = (uint32_t)(ramX1 - ramX0 + 1) * (uint32_t)(ramY1 - ramY0 + 1);
+  for (uint32_t i = 0; i < count; i++) {
+    LCD_SPI.transfer(color >> 8);
+    LCD_SPI.transfer(color & 0xFF);
+  }
+  digitalWrite(LCD_CS, HIGH);
+}
+
+// Repaint the two 40 px margins with black. They are the only pixels the UI
+// never redraws, so a stray speckle there would stay on screen for as long
+// as the synth is powered. Painting black over black does not flicker.
+void lcdRepaintMargins() {
+  lcdFillRam(0, 0, LCD_PANEL_H - 1, LCD_Y_OFFSET - 1, COLOR_BLACK);
+  lcdFillRam(0, LCD_Y_OFFSET + 240, LCD_PANEL_H - 1, LCD_PANEL_W - 1, COLOR_BLACK);
 }
 
 // ==== 描画ユーティリティ ====
@@ -1969,6 +2013,12 @@ void setup() {
 
   lcdFill(COLOR_BLACK);
 
+  // Clear the whole panel once more, now that the USB stack is up and
+  // running. The clear in lcdInit() happens while the USB MIDI stack is
+  // still coming up; a single flipped bit there would stay visible for
+  // good, because only the UI area is redrawn afterwards.
+  lcdClearWindow(LCD_PANEL_H, LCD_PANEL_W);
+
   pinMode(KEY_A_PIN, INPUT_PULLUP);
   pinMode(KEY_B_PIN, INPUT_PULLUP);
   pinMode(KEY_X_PIN, INPUT_PULLUP);
@@ -2213,6 +2263,15 @@ void loop() {
     lastFrame = now_us;
 
     uint32_t now = millis();
+
+    // The black margins are the only pixels the UI never redraws, so a stray
+    // speckle there would stay on screen for good. Repaint them every
+    // couple of seconds - black over black, so it does not flicker.
+    static unsigned long lastMarginPaint = 0;
+    if (now - lastMarginPaint >= 2000) {
+      lastMarginPaint = now;
+      lcdRepaintMargins();
+    }
 
     if (interval < 10) interval = 10;
 
