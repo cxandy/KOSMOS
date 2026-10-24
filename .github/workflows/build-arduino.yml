@@ -24,12 +24,17 @@ jobs:
       - name: Set up Arduino CLI
         uses: arduino/setup-arduino-cli@v2
         with:
-          # Adafruit TinyUSB is included by <Adafruit_TinyUSB.h>.
-          # PWMAudio is provided by the RP2040 core itself.
-          libraries: |
-            Adafruit TinyUSB
-          cores: |
-            rp2040:rp2040
+          # NOTE: v2 only accepts 'version'/'token'. The RP2040 core has to be
+          # installed explicitly in the next step - the old 'cores:'/'libraries:'
+          # inputs are ignored (and warn) since v2.
+          version: 1.x
+
+      - name: Install RP2040 core
+        # Board = Raspberry Pi Pico (RP2040). The core bundles Adafruit TinyUSB,
+        # which the sketch includes for USB MIDI.
+        run: |
+          arduino-cli core update-index
+          arduino-cli core install rp2040:rp2040
 
       - name: Compile KOSMOS-AcidDrip
         # Board = Raspberry Pi Pico, USB stack = TinyUSB, 150 MHz (see README).
