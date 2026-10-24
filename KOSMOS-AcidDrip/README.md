@@ -111,33 +111,40 @@ To flash: hold BOOTSEL, plug the Pico's USB port in, drag the UF2 onto the
 ## Display
 
 The UI keeps its native 240x240 coordinate system. The panel is addressed as
-320x240, and `lcdSetWindow()` applies the centring offset; the full 320x240
-area is cleared to black during init.
-
-This port uses the Acid Drip-style landscape address space (320x240), exactly
-like the original Acid Drip firmware (`tft.setRotation(3)` == `MADCTL 0x20`):
+320x240, and `lcdSetWindow()` rotates the UI into the panel's address space
+and applies the centring margin; the full 320x240 area is cleared to black
+during init.
 
 ```cpp
 #define KOSMOS_LCD_MADCTL 0x20
 #define LCD_PANEL_W 320
 #define LCD_PANEL_H 240
-#define LCD_X_OFFSET 40
-#define LCD_Y_OFFSET 0
+#define LCD_X_OFFSET 0    // RAM X -> the 240 px tall axis
+#define LCD_Y_OFFSET 40   // RAM Y -> the 320 px wide axis
 ```
 
 `0x20` is landscape with RGB order (no BGR bit). The ILI9341 has no column/row
 start offset, so centring the 240 px UI in the 320 px width needs a 40 px margin
-on each side: `LCD_X_OFFSET = (320 - 240) / 2 = 40`. The 320x240 panel is cleared
-fully to black on init to avoid side noise.
+on each side: `(320 - 240) / 2 = 40`. The 320x240 panel is cleared fully to
+black on init to avoid side noise.
 
-**There is no software rotation.** MADCTL's MV bit already transposes the
-controller into landscape, so the panel's RAM X axis *is* the physical
-horizontal axis and a logical `(x, y)` pixel goes straight to panel
-`(x + 40, y)`. An earlier revision of this port rotated the UI 90° on top of
-MADCTL and then added the 40 px margin — that transposed the picture twice and
-put the margin on the wrong axis, which showed up as an off-centre UI. Do not
-add a software rotation back: the original Acid Drip firmware does not use one
-either, and it drives this exact board.
+**The 90° rotation is required, and the margin must go on the other axis.**
+With MADCTL's MV bit set the panel's RAM axes are transposed relative to the
+screen: the 320 px wide axis is addressed by the row address (RAM Y) and the
+240 px tall axis by the column address (RAM X). A 240x240 UI therefore has to
+be written rotated 90° clockwise — logical `(x, y)` → RAM `(239 - y, x)` — to
+come out upright, and the 40 px margin belongs to RAM Y, the axis that ends up
+horizontal.
+
+Getting either half wrong is visible immediately:
+
+* margin on RAM X (the tall axis) → the UI sits against one edge / is clipped
+  and reads as "not centred";
+* no rotation at all → the picture comes out sideways.
+
+The original Acid Drip firmware draws the full 320x240 panel in one go, so it
+never needs either of these; this port has to place a smaller square inside
+that space.
 
 ---
 
@@ -163,9 +170,8 @@ the display's SPI pins. `readJoystick()` is a no-op.
 
 * PWM mono audio on GP15 instead of I2S on GP26/27/28.
 * ILI9341 init using landscape MADCTL `0x20` (RGB), full 320x240 clearing, and a
-  40 px X offset to centre the 240x240 UI, instead of the ST7789 240x240 display.
-  The panel is driven exactly like the original Acid Drip firmware (no software
-  rotation), so the UI keeps the same orientation.
+  90° clockwise rotation of the 240x240 UI plus a 40 px margin on the axis that
+  ends up horizontal, instead of the ST7789 240x240 display.
 * A button moved from GP15 to GP16 (GP15 is audio on Acid Drip).
 * Joystick disabled; GP22 no longer used as DAC mute.
 * Splash delay reduced from 10 s to 1.5 s.

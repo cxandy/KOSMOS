@@ -192,24 +192,23 @@ Adafruit_USBD_MIDI usb_midi;
 // address space. 0x20 is used because this panel shows red/blue correctly
 // with the RGB bit set; 0x28 turns the BGR bit on and swaps them.
 //
-// MV already transposes the controller into landscape, so the panel's RAM X
-// axis IS the physical horizontal axis and RAM Y the vertical one. That is
-// exactly how the original Acid Drip firmware drives this very board
-// (tft.setRotation(3) == MADCTL 0x20, full 320x240, NO software rotation),
-// so this port must not rotate the UI on top of it: rotating twice
-// transposes the picture and also moves the centring margin onto the
-// wrong axis, which is what left the UI off-centre.
+// The panel's RAM axes are transposed relative to the screen: with MV set the
+// 320 px wide axis of the panel is addressed by the row address (RAM Y) and
+// the 240 px tall axis by the column address (RAM X). The KOSMOS UI is a
+// 240x240 square, so it has to be written rotated 90 degrees clockwise
+// (logical x -> RAM Y, logical y -> RAM X) to come out upright, and the
+// 40 px margin that centres it in the 320 px width has to be applied to
+// RAM Y - not to RAM X.
 #define KOSMOS_LCD_MADCTL 0x20
 
-// The panel is addressed as 320x240, as in the original Acid Drip firmware.
-// The KOSMOS UI is only 240x240, so it is centred with a 40 px margin on each
-// side: (320 - 240) / 2 = 40. Y stays at 0 because the 240 px UI fills the
-// 240 px panel height. The ILI9341 has no column/row start offset, so no extra
-// panel margin is added.
+// The UI is 240x240 on a 320x240 panel. After the 90 degree rotation the
+// logical x axis lands on RAM Y (the 320 px wide one) and the logical y axis
+// on RAM X (the 240 px tall one), so the centring margin is 40 px on RAM Y
+// ((320 - 240) / 2) and none on RAM X.
 #define LCD_PANEL_W 320
 #define LCD_PANEL_H 240
-#define LCD_X_OFFSET 40
-#define LCD_Y_OFFSET 0
+#define LCD_X_OFFSET 0    // RAM X -> 240 px tall axis, the UI fills it
+#define LCD_Y_OFFSET 40   // RAM Y -> 320 px wide axis, (320 - 240) / 2
 
 // ---- A/B/X/Y (Acid Drip pads 4/5/6/8) ----
 #define KEY_A_PIN    16
@@ -914,13 +913,19 @@ void lcdInit() {
 }
 
 // ==== 描画ユーティリティ ====
-// Logical coordinates are 240x240; the UI is centred in the 320x240 panel, so
-// the X axis gets a 40 px margin on each side and the Y axis none (the 240 px
-// UI exactly fills the 240 px panel height).
-// There is no software rotation: with MADCTL's MV bit set the panel's RAM X
-// axis is already the physical horizontal one, so a logical (x, y) pixel goes
-// straight to panel (x + LCD_X_OFFSET, y + LCD_Y_OFFSET).
+// Logical coordinates are 240x240. The UI is written rotated 90 degrees
+// clockwise into the panel's transposed address space and then centred:
+// logical (x, y) -> RAM (239 - y, x), with the 40 px margin applied to the
+// 320 px wide axis (RAM Y).
 void lcdSetWindow(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) {
+  // Rotate the logical 240x240 square 90 degrees clockwise. For a square
+  // area this maps old (x,y) to new (239 - y, x).
+  uint16_t tx0 = (uint16_t)(239 - y1);
+  uint16_t tx1 = (uint16_t)(239 - y0);
+  uint16_t ty0 = x0;
+  uint16_t ty1 = x1;
+  x0 = tx0; x1 = tx1; y0 = ty0; y1 = ty1;
+
   x0 += LCD_X_OFFSET;
   x1 += LCD_X_OFFSET;
   y0 += LCD_Y_OFFSET;
