@@ -33,7 +33,16 @@ jobs:
 
       - name: Compile KOSMOS-AcidDrip
         # Board = Raspberry Pi Pico, USB stack = TinyUSB, 150 MHz (see README).
+        # -e == --export-binaries: writes the UF2 next to the sketch, under
+        # KOSMOS-AcidDrip/build/, which the upload step below picks up.
         run: |
           arduino-cli compile \
             --fqbn rp2040:rp2040:rpipico:usbstack=tinyusb,freq=150 \
             -e KOSMOS-AcidDrip
+
+      - name: Upload UF2 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: KOSMOS-AcidDrip-uf2
+          path: KOSMOS-AcidDrip/build/**/*.uf2
+          if-no-files-found: error

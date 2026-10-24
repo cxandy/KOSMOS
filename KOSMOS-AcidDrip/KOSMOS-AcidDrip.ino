@@ -189,9 +189,16 @@ Adafruit_USBD_MIDI usb_midi;
 #define LCD_SPI   SPI
 
 // Acid Drip V2 display setup: landscape MADCTL 0x20 (MV, RGB), full 320x240
-// address space. The logical UI is rotated 90 degrees clockwise via
-// lcdSetWindow(). 0x20 is used because this panel shows red/blue correctly
+// address space. 0x20 is used because this panel shows red/blue correctly
 // with the RGB bit set; 0x28 turns the BGR bit on and swaps them.
+//
+// MV already transposes the controller into landscape, so the panel's RAM X
+// axis IS the physical horizontal axis and RAM Y the vertical one. That is
+// exactly how the original Acid Drip firmware drives this very board
+// (tft.setRotation(3) == MADCTL 0x20, full 320x240, NO software rotation),
+// so this port must not rotate the UI on top of it: rotating twice
+// transposes the picture and also moves the centring margin onto the
+// wrong axis, which is what left the UI off-centre.
 #define KOSMOS_LCD_MADCTL 0x20
 
 // The panel is addressed as 320x240, as in the original Acid Drip firmware.
@@ -203,11 +210,6 @@ Adafruit_USBD_MIDI usb_midi;
 #define LCD_PANEL_H 240
 #define LCD_X_OFFSET 40
 #define LCD_Y_OFFSET 0
-
-// Rotate the logical 240x240 UI content 90 degrees clockwise on top of the
-// panel's landscape MADCTL. This keeps the panel addressable area clean (320x240)
-// while satisfying the requested 90-degree content rotation.
-#define KOSMOS_LCD_ROTATE_CONTENT_90 1
 
 // ---- A/B/X/Y (Acid Drip pads 4/5/6/8) ----
 #define KEY_A_PIN    16
@@ -912,18 +914,13 @@ void lcdInit() {
 }
 
 // ==== 描画ユーティリティ ====
-// Logical coordinates are 240x240; the UI is centred in the panel, so both
-// axes get an offset (one of them is always zero for a 320x240 panel).
+// Logical coordinates are 240x240; the UI is centred in the 320x240 panel, so
+// the X axis gets a 40 px margin on each side and the Y axis none (the 240 px
+// UI exactly fills the 240 px panel height).
+// There is no software rotation: with MADCTL's MV bit set the panel's RAM X
+// axis is already the physical horizontal one, so a logical (x, y) pixel goes
+// straight to panel (x + LCD_X_OFFSET, y + LCD_Y_OFFSET).
 void lcdSetWindow(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) {
-  if (KOSMOS_LCD_ROTATE_CONTENT_90) {
-    // Rotate the logical 240x240 square 90 degrees clockwise. For a square
-    // area this maps old (x,y) to new (239 - y, x).
-    uint16_t tx0 = (uint16_t)(239 - y1);
-    uint16_t tx1 = (uint16_t)(239 - y0);
-    uint16_t ty0 = x0;
-    uint16_t ty1 = x1;
-    x0 = tx0; x1 = tx1; y0 = ty0; y1 = ty1;
-  }
   x0 += LCD_X_OFFSET;
   x1 += LCD_X_OFFSET;
   y0 += LCD_Y_OFFSET;

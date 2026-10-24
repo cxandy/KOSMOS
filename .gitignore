@@ -1,0 +1,9 @@
+# Arduino build output.
+# The flashable UF2 is produced by the Build workflow and published as a
+# workflow artifact (see KOSMOS-AcidDrip/README.md), so local build
+# directories and one-off images are not tracked.
+KOSMOS-AcidDrip/bin/
+KOSMOS-AcidDrip/build/
+
+# Local agent runtime metadata.
+.commandcode/
