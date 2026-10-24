@@ -30,11 +30,15 @@ jobs:
           version: 1.x
 
       - name: Install RP2040 core
-        # Board = Raspberry Pi Pico (RP2040). The core bundles Adafruit TinyUSB,
-        # which the sketch includes for USB MIDI.
+        # The Pico core is NOT in the official Arduino package index - it is
+        # published by Earle Philhower as a third-party index. Pin it to 6.0.0,
+        # the version the firmware is tested with (see README).
+        # The core bundles Adafruit TinyUSB, which the sketch uses for USB MIDI.
         run: |
+          arduino-cli config add board_manager.additional_urls \
+            https://github.com/earlephilhower/arduino-pico/releases/download/6.0.0/package_rp2040_index.json
           arduino-cli core update-index
-          arduino-cli core install rp2040:rp2040
+          arduino-cli core install rp2040:rp2040@6.0.0
 
       - name: Compile KOSMOS-AcidDrip
         # Board = Raspberry Pi Pico, USB stack = TinyUSB, 150 MHz (see README).

@@ -62,10 +62,19 @@ when updating PRA32-U, copy the headers again.
 arduino-cli equivalent:
 
 ```
+arduino-cli config add board_manager.additional_urls \
+  https://github.com/earlephilhower/arduino-pico/releases/download/6.0.0/package_rp2040_index.json
+arduino-cli core update-index
+arduino-cli core install rp2040:rp2040@6.0.0
 arduino-cli compile \
   --fqbn rp2040:rp2040:rpipico:usbstack=tinyusb,freq=150 \
   KOSMOS-AcidDrip
 ```
+
+> The Pico core is **not** in the official Arduino package index, it comes from
+> Earle Philhower's third-party index — without that `additional_urls` entry
+> the build fails with `Platform 'rp2040:rp2040' not found`. The core bundles
+> Adafruit TinyUSB, so no extra library is needed for USB MIDI.
 
 Prebuilt images are produced by the **Build** workflow
 (`.github/workflows/build-arduino.yml`): every push that touches this folder
