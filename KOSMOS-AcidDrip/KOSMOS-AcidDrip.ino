@@ -1,8 +1,10 @@
-/* KOSMOS for Acid Drip V2 (RP2040 + ILI9341 320x240 + 16 pads)
+/* KOSMOS for Acid Drip V2/V5 (RP2040 + ILI9341 320x240 + 16 pads)
  *
  * Hardware target:
- *   - Acid Drip V2 main board (Pico, ILI9341 on SPI0, 16 Cherry MX pads)
- *   - Audio: mono PWM on GP15 -> 100R + 10nF -> "level" pot -> mono 3.5mm jack
+ *   - Acid Drip V2, or the V5 modification (Pico, ILI9341 on SPI0, 16 pads)
+ *   - Audio: mono PWM on GP15 -> the board's output stage -> 3.5mm jack
+ *   - V5 mod: LCD RST is jumpered to 3V3 and GP8 is the sync jack, so GP8 is
+ *     left alone by default (see KOSMOS_LCD_RST_PIN below)
  *   - No joystick, no I2S DAC, no backlight GPIO
  *
  * Based on KOSMOS v1.3.4 (src/KOSMOS.ino). The PRA32-U headers are vendored
@@ -180,13 +182,23 @@ Adafruit_USBD_MIDI usb_midi;
 #define COLOR_ORANGE 0xFD20   // 明るいオレンジ
 
 // ==== Acid Drip V2: ILI9341 320x240 on SPI0 ====
-// TFT : SCK=GP6  MOSI=GP7  RST=GP8  DC=GP10  CS=GP13  (BL is hard-wired on)
+// TFT : SCK=GP6  MOSI=GP7  DC=GP10  CS=GP13  (BL is hard-wired on)
 #define LCD_DC   10
 #define LCD_CS   13
-#define LCD_RST   8
 #define LCD_SCK   6
 #define LCD_MOSI  7
 #define LCD_SPI   SPI
+
+// LCD reset pin.
+//   Stock V2 board: the panel RST is on GP8 -> build with
+//   -DKOSMOS_LCD_RST_PIN=8.
+//   V5 modification: RST is tied to 3V3 and GP8 is the sync jack. Driving GP8
+//   here would send a pulse out of the sync jack on every boot and fight an
+//   external clock source, so the default leaves the pin alone and the panel
+//   is reset with SWRESET (0x01) instead.
+#ifndef KOSMOS_LCD_RST_PIN
+#define KOSMOS_LCD_RST_PIN (-1)
+#endif
 
 // Acid Drip V2 display setup: landscape MADCTL 0x20 (MV, RGB), full 320x240
 // address space. 0x20 is used because this panel shows red/blue correctly
@@ -845,14 +857,16 @@ void lcdData(uint8_t dat) {
   digitalWrite(LCD_CS, HIGH);
 }
 
-// ==== LCD 初期化（ILI9341 / Acid Drip V2） ====
+// ==== LCD 初期化（ILI9341 / Acid Drip V2・V5） ====
 // Clear a cols x rows rectangle of the panel RAM with black.
 void lcdClearWindow(uint16_t cols, uint16_t rows);
 
 void lcdInit() {
   pinMode(LCD_CS, OUTPUT);
   pinMode(LCD_DC, OUTPUT);
-  pinMode(LCD_RST, OUTPUT);
+#if KOSMOS_LCD_RST_PIN >= 0
+  pinMode(KOSMOS_LCD_RST_PIN, OUTPUT);
+#endif
 
   digitalWrite(LCD_CS, HIGH);
 
@@ -861,9 +875,11 @@ void lcdInit() {
   LCD_SPI.begin();
   LCD_SPI.beginTransaction(SPISettings(LCD_SPI_HZ, MSBFIRST, SPI_MODE0));
 
-  // ハードウェアリセット
-  digitalWrite(LCD_RST, LOW); delay(10);
-  digitalWrite(LCD_RST, HIGH); delay(120);
+  // ハードウェアリセット（V5 改装板は RST が 3V3 直結なのでスキップ）
+#if KOSMOS_LCD_RST_PIN >= 0
+  digitalWrite(KOSMOS_LCD_RST_PIN, LOW); delay(10);
+  digitalWrite(KOSMOS_LCD_RST_PIN, HIGH); delay(120);
+#endif
 
   // ==== ILI9341 初期化 ====
   lcdCmd(0x01); delay(150);              // SWRESET

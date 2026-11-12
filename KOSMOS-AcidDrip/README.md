@@ -1,29 +1,31 @@
 # KOSMOS-AcidDrip
 
-KOSMOS v1.3.4 ported to the **Acid Drip V2** main board (RP2040 / Raspberry Pi
-Pico, ILI9341 320x240, 16 Cherry MX pads).
+KOSMOS v1.3.4 ported to the **Acid Drip V2** main board and to the **V5
+modification** (RP2040 / Raspberry Pi Pico, ILI9341 320x240, 16 Cherry MX
+pads). On the V5 mod the LCD RST line is tied to 3V3 and GP8 is the sync jack,
+so this port leaves GP8 alone; see `KOSMOS_LCD_RST_PIN` below.
 
 This variant replaces the original I2S DAC output with **mono PWM audio on
 GP15**, and the Waveshare 240x240 ST7789 driver with an **ILI9341 driver that
 centres the 240x240 UI in the 320x240 panel**.
 
-Compiled and linked with arduino-pico 6.0.0 and being tested on real Acid Drip
-V2 hardware. Display orientation is matched to the original firmware; audio
-gain and PWM noise may still need adjustment (see below).
+Compiled and linked with arduino-pico 6.0.0 and tested on real Acid Drip V2 and
+V5 hardware (display orientation, audio output). Audio gain and PWM noise may
+still need adjustment per board (see below).
 
 ---
 
 ## Hardware mapping
 
-| Function | Acid Drip V2 pin | Notes |
+| Function | Acid Drip pin | Notes |
 |---|---|---|
 | TFT SCK | GP6 | SPI0 |
 | TFT MOSI | GP7 | SPI0 |
-| TFT RST | GP8 | |
+| TFT RST | GP8 (V2) / 3V3 (V5 mod) | on the V5 mod GP8 is sync and is **not** driven; see below |
 | TFT DC | GP10 | |
 | TFT CS | GP13 | |
 | TFT backlight | — | hard-wired on |
-| Audio (mono) | GP15 | 100R + 10nF -> `level` pot -> mono TS jack |
+| Audio (mono) | GP15 | V2: 100R + 10nF -> `level` pot -> jack. V5: 10K/3.3K divider + 10nF -> 10µF -> jack |
 | A button | GP16 | pad 4 |
 | B button | GP17 | pad 5 |
 | X button | GP19 | pad 6 |
@@ -36,9 +38,10 @@ Pad numbering follows the Acid Drip README: top row pads 1-8 are
 `GP14, GP12, GP11, GP16, GP17, GP19, GP20, GP21`; bottom row pads 9-16 are
 `GP0, GP1, GP3, GP4, GP5, GP9, GP18, GP22`.
 
-> **Important:** the V2 `level` pot crossfades the GP15 (acid) path against the
-> GP2 (drums) path. KOSMOS only drives GP15, so turn the pot toward the
-> **ACID** side or you will hear silence.
+> **Important (V2):** the `level` pot crossfades the GP15 (acid) path against
+> the GP2 (drums) path. KOSMOS only drives GP15, so turn the pot toward the
+> **ACID** side or you will hear silence. On the V5 mod GP15 feeds the mixing
+> node directly and the pot only trims the GP2 side, so this does not apply.
 
 ---
 
@@ -84,6 +87,23 @@ compiles the sketch with exactly the FQBN above and uploads the resulting
 
 To flash: hold BOOTSEL, plug the Pico's USB port in, drag the UF2 onto the
 `RPI-RP2` drive.
+
+### LCD reset (V2 vs V5 mod)
+
+The port does **not** drive GP8 by default (`KOSMOS_LCD_RST_PIN = -1`). On the
+V5 modification the panel RST is tied to 3V3 and GP8 is the sync jack, so a
+hardware reset pulse there would go out of the sync connector on every boot and
+could fight an external clock source. The panel is reset with `SWRESET (0x01)`
+instead, which is enough because its RST pin is already released.
+
+On a stock V2 board (panel RST on GP8) build with:
+
+```
+arduino-cli compile \
+  --fqbn rp2040:rp2040:rpipico:usbstack=tinyusb,freq=150 \
+  --build-property "compiler.cpp.extra_flags=-DKOSMOS_LCD_RST_PIN=8" \
+  KOSMOS-AcidDrip
+```
 
 ---
 
@@ -202,6 +222,8 @@ the display's SPI pins. `readJoystick()` is a no-op.
   ends up horizontal, a 12 MHz SPI clock and a periodic repaint of the black
   margins, instead of the ST7789 240x240 display.
 * A button moved from GP15 to GP16 (GP15 is audio on Acid Drip).
+* LCD reset: GP8 is only driven when `KOSMOS_LCD_RST_PIN` is set (default is
+  `-1`, for the V5 mod where RST is tied to 3V3 and GP8 is sync).
 * Joystick disabled; GP22 no longer used as DAC mute.
 * Splash delay reduced from 10 s to 1.5 s.
 * `lcdFillRect()` now clips to 240x240 (upstream could send windows past the
@@ -212,4 +234,3 @@ the display's SPI pins. `readJoystick()` is a no-op.
 * Map the three parameter pots (GP26 CUT, GP28 RES, GP27 DECAY) to filter /
   resonance / decay CCs.
 * Use the remaining 12 pads for Euclidean editing / pattern selection.
-* Verify panel orientation and PWM noise on hardware.
